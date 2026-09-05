@@ -1,0 +1,4 @@
+Question: what are the top products
+
+LLM response:
+-- Assumption: 'top products' means products with the highest total revenue (
