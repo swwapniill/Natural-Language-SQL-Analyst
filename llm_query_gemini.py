@@ -14,10 +14,13 @@ import os
 from google import genai
 from prompt_builder import build_system_prompt
 
-# If this model name has been renamed/retired by the time you run this,
-# go to https://aistudio.google.com, check "Get API key" -> model list,
-# and swap in whatever their current free-tier flash model is called.
-MODEL = "gemini-3.6-flash"
+# gemini-3.6-flash has an extremely tight free-tier quota (20 requests/DAY,
+# confirmed via a live 429 error) -- unusable for a benchmark of 25 questions.
+# gemini-2.0-flash is an older, established model with a documented free
+# tier in the hundreds-to-1500/day range. If this also turns out to be
+# wrong, the live error message will tell us the real number, same as
+# it did for 3.6-flash -- don't trust blog posts over the actual API.
+MODEL = "gemini-2.0-flash"
 
 
 def get_client() -> genai.Client:

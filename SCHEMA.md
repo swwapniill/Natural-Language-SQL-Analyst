@@ -61,6 +61,8 @@ Never assume a status implies a field is populated. Use `IS NOT NULL` checks or 
 ### 6. Product categories are in Portuguese
 `products.product_category_name` is Portuguese (e.g. `beleza_saude`). Join to `product_category_name_translation` for English (`health_beauty`). If a question asks about categories by name in English, you likely need this join — don't guess a Portuguese term.
 
+**Trap found during benchmark testing:** 2 category names used in `products` have no matching row in the translation table (`pc_gamer`, `portateis_cozinha_e_preparadores_de_alimentos`) — 71 translated categories vs 73 actual categories in `products`. If you `LEFT JOIN` to the translation table and then `COUNT(DISTINCT <translated column>)`, these 2 categories silently vanish from the count, because `COUNT(DISTINCT)` ignores NULLs and the translated column is NULL for untranslated categories. The join itself isn't wrong — counting the translated column when you didn't need translation is. For general category-counting questions, count `DISTINCT product_category_name` directly; only join to the translation table when English names are actually needed.
+
 ---
 
 ## Tables

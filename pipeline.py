@@ -7,7 +7,7 @@ clear explanation of why it was refused/failed.
 """
 import re
 
-from llm_query_gemini import ask_llm_for_sql, ask_llm_to_fix_sql
+from llm_query_groq import ask_llm_for_sql, ask_llm_to_fix_sql
 from validator import validate_and_prepare, ValidationError
 from schema_loader import load_schema
 from executor import execute_readonly, ExecutionError, QueryTimeout

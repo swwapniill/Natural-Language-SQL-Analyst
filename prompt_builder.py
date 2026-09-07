@@ -42,6 +42,21 @@ products(product_id, product_category_name, product_name_lenght, product_descrip
 product_category_name_translation(product_category_name, product_category_name_english)
   - Small lookup table. Join on product_category_name to translate Portuguese category
     names to English.
+  - When DISPLAYING category names to the user (e.g. "top categories by revenue", "which
+    category sells best"), join to this table and show the English name -- it's more
+    readable than the raw Portuguese code.
+  - When COUNTING DISTINCT categories as a number (e.g. "how many distinct categories
+    are there"), do NOT join to this table -- count DISTINCT product_category_name (the
+    original column) directly. See the CRITICAL DATA QUIRK below for why.
+  - CRITICAL DATA QUIRK: 2 category names used in the products table have NO matching
+    row in this translation table (pc_gamer, portateis_cozinha_e_preparadores_de_alimentos).
+    If you LEFT JOIN to this table and then do COUNT(DISTINCT <translated column>),
+    these 2 categories will be silently dropped from the count, because COUNT(DISTINCT)
+    ignores NULLs -- and the translated column IS NULL for these 2 categories after the
+    join. This produces a wrong, under-counted result even though the LEFT JOIN itself
+    is technically correct. This only affects COUNTING; it does not affect displaying
+    category names in a list (a row with an untranslated category will just show NULL
+    or you can COALESCE it to the original Portuguese name).
 
 sellers(seller_id, seller_zip_code_prefix, seller_city, seller_state)
 
