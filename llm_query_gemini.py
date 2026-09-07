@@ -49,6 +49,43 @@ def ask_llm_for_sql(question: str) -> str:
     return response.text.strip()
 
 
+def ask_llm_to_fix_sql(question: str, failed_sql: str, error_message: str) -> str:
+    """
+    Day 5: self-correction retry. Used when the first SQL attempt was
+    syntactically a valid SELECT but failed validation (unknown column/table)
+    or failed at execution (a real DB error, e.g. bad join logic).
+
+    Sends the original question, the SQL that failed, and the exact error
+    back to the LLM, and asks for one corrected attempt. Same schema/rules
+    system prompt as the first attempt -- this is a follow-up, not a
+    from-scratch retry with different context.
+    """
+    client = get_client()
+    system_prompt = build_system_prompt()
+
+    retry_message = (
+        f"Original question: {question}\n\n"
+        f"You previously generated this SQL:\n{failed_sql}\n\n"
+        f"Running it produced this error:\n{error_message}\n\n"
+        f"Fix the query and provide a corrected SELECT statement. "
+        f"Follow the same rules and output format as before -- SQL only, "
+        f"optionally with a leading assumption comment. If the error means "
+        f"the question genuinely cannot be answered from this schema, "
+        f"respond with NO_QUERY: <reason> instead."
+    )
+
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=retry_message,
+        config={
+            "system_instruction": system_prompt,
+            "max_output_tokens": 3000,
+        },
+    )
+
+    return response.text.strip()
+
+
 if __name__ == "__main__":
     # quick manual test -- run this file directly to try a question from the command line
     import sys

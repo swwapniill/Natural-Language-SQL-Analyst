@@ -7,67 +7,96 @@ clear explanation of why it was refused/failed.
 """
 import re
 
-from llm_query_gemini import ask_llm_for_sql
+from llm_query_gemini import ask_llm_for_sql, ask_llm_to_fix_sql
 from validator import validate_and_prepare, ValidationError
 from schema_loader import load_schema
 from executor import execute_readonly, ExecutionError, QueryTimeout
 
 DB_PATH = "olist_real.db"
+MAX_RETRIES = 1
 
 
 def _extract_assumption(sql: str):
     """Pulls out a leading assumption comment if the LLM included one,
     so it can be shown to the user separately from the raw SQL later
-    (Day 9's output layer). Handles both -- and /* */ comment styles."""
+    (Day 9's output layer). Handles both -- and /* */ comment styles.
+    Also strips a redundant leading 'Assumption:' label from the comment
+    text itself, since the caller adds its own 'Assumption:' label when
+    displaying it -- without this, output reads 'Assumption: Assumption: ...'"""
     stripped = sql.strip()
     dash_match = re.match(r"^--\s*(.+)", stripped)
-    if dash_match:
-        return dash_match.group(1).strip()
     block_match = re.match(r"^/\*\s*(.+?)\s*\*/", stripped, re.DOTALL)
-    if block_match:
-        return block_match.group(1).strip()
-    return None
+
+    text = None
+    if dash_match:
+        text = dash_match.group(1).strip()
+    elif block_match:
+        text = block_match.group(1).strip()
+
+    if text:
+        text = re.sub(r"^assumption:\s*", "", text, flags=re.IGNORECASE)
+    return text
 
 
 def ask_question(question: str) -> dict:
     """
-    Runs the full pipeline for one natural-language question.
+    Runs the full pipeline for one natural-language question, including
+    Day 5's self-correction retry: if the SQL fails validation (unknown
+    table/column) or fails at execution (real DB error), the error is fed
+    back to the LLM once for a corrected attempt. Timeouts are NOT
+    retried -- an expensive query will just time out again, so retrying
+    wastes time and API cost rather than fixing anything.
 
     Returns a dict with a 'status' key that is one of:
-      'success'  -> {'status', 'sql', 'assumption', 'columns', 'rows'}
+      'success'  -> {'status', 'sql', 'assumption', 'columns', 'rows', 'retried'}
       'refused'  -> {'status', 'message'}   (destructive request blocked)
       'no_query' -> {'status', 'message'}   (out of scope / can't be answered)
-      'error'    -> {'status', 'message'}   (validation or execution failure)
+      'error'    -> {'status', 'message', 'retried'}  (failed even after retry)
     """
-    raw_response = ask_llm_for_sql(question)
-
-    if raw_response.startswith("REFUSED:"):
-        return {"status": "refused", "message": raw_response[len("REFUSED:"):].strip()}
-
-    if raw_response.startswith("NO_QUERY:"):
-        return {"status": "no_query", "message": raw_response[len("NO_QUERY:"):].strip()}
-
     schema = load_schema(DB_PATH)
+    raw_response = ask_llm_for_sql(question)
+    retried = False
 
-    try:
-        safe_sql = validate_and_prepare(raw_response, schema)
-    except ValidationError as e:
-        return {"status": "error", "message": f"The generated query was rejected: {e}"}
+    for attempt in range(MAX_RETRIES + 1):
+        if raw_response.startswith("REFUSED:"):
+            return {"status": "refused", "message": raw_response[len("REFUSED:"):].strip()}
 
-    try:
-        columns, rows = execute_readonly(DB_PATH, safe_sql)
-    except QueryTimeout as e:
-        return {"status": "error", "message": str(e)}
-    except ExecutionError as e:
-        return {"status": "error", "message": str(e)}
+        if raw_response.startswith("NO_QUERY:"):
+            return {"status": "no_query", "message": raw_response[len("NO_QUERY:"):].strip()}
 
-    return {
-        "status": "success",
-        "sql": safe_sql,
-        "assumption": _extract_assumption(raw_response),
-        "columns": columns,
-        "rows": rows,
-    }
+        try:
+            safe_sql = validate_and_prepare(raw_response, schema)
+        except ValidationError as e:
+            if attempt < MAX_RETRIES:
+                raw_response = ask_llm_to_fix_sql(question, raw_response, str(e))
+                retried = True
+                continue
+            return {
+                "status": "error",
+                "message": f"The generated query was rejected: {e}",
+                "retried": retried,
+            }
+
+        try:
+            columns, rows = execute_readonly(DB_PATH, safe_sql)
+        except QueryTimeout as e:
+            # Deliberately NOT retried -- see docstring.
+            return {"status": "error", "message": str(e), "retried": retried}
+        except ExecutionError as e:
+            if attempt < MAX_RETRIES:
+                raw_response = ask_llm_to_fix_sql(question, safe_sql, str(e))
+                retried = True
+                continue
+            return {"status": "error", "message": str(e), "retried": retried}
+
+        return {
+            "status": "success",
+            "sql": safe_sql,
+            "assumption": _extract_assumption(raw_response),
+            "columns": columns,
+            "rows": rows,
+            "retried": retried,
+        }
 
 
 if __name__ == "__main__":
@@ -82,6 +111,8 @@ if __name__ == "__main__":
     result = ask_question(q)
 
     if result["status"] == "success":
+        if result.get("retried"):
+            print("(Note: first attempt failed, this is the corrected result after 1 retry)\n")
         if result["assumption"]:
             print(f"Assumption: {result['assumption']}\n")
         print(f"SQL run: {result['sql']}\n")
@@ -91,4 +122,5 @@ if __name__ == "__main__":
         if len(result["rows"]) > 20:
             print(f"  ... and {len(result['rows']) - 20} more rows")
     else:
-        print(f"[{result['status'].upper()}] {result['message']}")
+        retried_note = " (after 1 retry)" if result.get("retried") else ""
+        print(f"[{result['status'].upper()}{retried_note}] {result['message']}")
