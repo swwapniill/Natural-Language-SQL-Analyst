@@ -48,6 +48,25 @@ def build_table(columns: list, rows: list) -> pd.DataFrame:
 
 _DATE_COL_HINTS = ("date", "timestamp", "_at", "year", "month", "ym")
 
+_MONEY_COL_HINTS = ("revenue", "price", "payment", "value", "freight", "total", "spend", "paid")
+
+
+def _is_money_column(col_name: str) -> bool:
+    return any(h in col_name.lower() for h in _MONEY_COL_HINTS)
+
+
+def _format_money(v) -> str:
+    try:
+        return f"${float(v):,.2f}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def _pretty_label(col_name: str) -> str:
+    """'category_name' -> 'Category Name' -- for chart titles/axis labels only,
+    the raw column name is still used everywhere the code needs to match it."""
+    return col_name.replace("_", " ").title()
+
 
 def _looks_like_date_column(col_name: str, sample_values) -> bool:
     name_hint = any(h in col_name.lower() for h in _DATE_COL_HINTS)
@@ -104,17 +123,24 @@ def choose_and_build_chart(columns: list, rows: list, output_path: str = "chart.
     values = [r[numeric_col_idx] for r in rows[:20]]
 
     is_date = _looks_like_date_column(columns[label_col_idx], [r[label_col_idx] for r in rows[:3]])
+    is_money = _is_money_column(columns[numeric_col_idx])
+
+    metric_label = _pretty_label(columns[numeric_col_idx])
+    axis_label = _pretty_label(columns[label_col_idx])
 
     plt.figure(figsize=(8, 4.5))
+    ax = plt.gca()
     if is_date:
         plt.plot(labels, values, marker="o")
         plt.xticks(rotation=45, ha="right")
-        plt.title(f"{columns[numeric_col_idx]} over {columns[label_col_idx]}")
+        plt.title(f"{metric_label} over {axis_label}")
     else:
         plt.bar(labels, values)
         plt.xticks(rotation=45, ha="right")
-        plt.title(f"{columns[numeric_col_idx]} by {columns[label_col_idx]}")
-    plt.ylabel(columns[numeric_col_idx])
+        plt.title(f"{metric_label} by {axis_label}")
+    plt.ylabel(metric_label)
+    if is_money:
+        ax.yaxis.set_major_formatter(lambda x, pos: f"${x:,.0f}")
     plt.tight_layout()
     plt.savefig(output_path, dpi=100)
     plt.close()
@@ -131,7 +157,12 @@ def display_result(question: str, result: dict, chart_path: str = "chart.png"):
         return summary, None, None
 
     df = build_table(result["columns"], result["rows"])
-    print(df.to_string(index=False, max_rows=20))
+
+    display_df = df.copy()
+    for col in display_df.columns:
+        if _is_money_column(col):
+            display_df[col] = display_df[col].apply(_format_money)
+    print(display_df.to_string(index=False, max_rows=20))
 
     chart = choose_and_build_chart(result["columns"], result["rows"], chart_path)
     if chart:
