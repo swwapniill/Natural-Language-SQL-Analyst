@@ -82,19 +82,12 @@ def _is_numeric_column(sample_values) -> bool:
     return all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in sample_values if v is not None)
 
 
-def choose_and_build_chart(columns: list, rows: list, output_path: str = "chart.png"):
+def _select_chart_data(columns: list, rows: list):
     """
-    Heuristic chart selection based on the SHAPE of the result, not the
-    question text:
-      - 0 or 1 row  -> no chart (a single number doesn't need a chart)
-      - 1 label column (text or date) + 1 numeric column -> bar or line
-      - date-like label column -> line chart (trend over time)
-      - text/categorical label column -> bar chart (comparison across items)
-      - anything else (many columns, no clear single metric) -> no chart
-
-    Returns the output_path if a chart was created, or None if no chart
-    was appropriate for this data shape (this is a deliberate decision,
-    not a failure -- not every result should have a chart).
+    Shared heuristic, used by both the file-saving CLI version and the
+    Streamlit figure version, so the chart-selection logic only lives in
+    one place. Returns None if no chart suits this data shape, otherwise
+    a dict with everything needed to draw it.
     """
     if len(rows) <= 1 or len(columns) < 2:
         return None
@@ -105,7 +98,6 @@ def choose_and_build_chart(columns: list, rows: list, output_path: str = "chart.
         if _is_numeric_column(sample):
             numeric_col_idx = i
             break
-
     if numeric_col_idx is None:
         return None
 
@@ -115,36 +107,82 @@ def choose_and_build_chart(columns: list, rows: list, output_path: str = "chart.
             continue
         label_col_idx = i
         break
-
     if label_col_idx is None:
         return None
 
-    labels = [str(r[label_col_idx]) for r in rows[:20]]
-    values = [r[numeric_col_idx] for r in rows[:20]]
-
+    labels_raw = [r[label_col_idx] for r in rows[:20]]
     is_date = _looks_like_date_column(columns[label_col_idx], [r[label_col_idx] for r in rows[:3]])
+    is_id_like = "id" in columns[label_col_idx].lower()
+
+    if is_date or is_id_like:
+        labels = [str(v) for v in labels_raw]
+    else:
+        # "health_beauty" -> "Health Beauty" -- raw snake_case values look
+        # unfinished in a chart; prettify anything that isn't a date or ID.
+        labels = [_pretty_label(str(v)) for v in labels_raw]
+
+    values = [r[numeric_col_idx] for r in rows[:20]]
     is_money = _is_money_column(columns[numeric_col_idx])
 
-    metric_label = _pretty_label(columns[numeric_col_idx])
-    axis_label = _pretty_label(columns[label_col_idx])
+    return {
+        "labels": labels,
+        "values": values,
+        "is_date": is_date,
+        "is_money": is_money,
+        "metric_label": _pretty_label(columns[numeric_col_idx]),
+        "axis_label": _pretty_label(columns[label_col_idx]),
+    }
 
-    plt.figure(figsize=(8, 4.5))
-    ax = plt.gca()
-    if is_date:
-        plt.plot(labels, values, marker="o")
-        plt.xticks(rotation=45, ha="right")
-        plt.title(f"{metric_label} over {axis_label}")
+
+def _draw_chart(chart_data, fig=None, ax=None):
+    """Draws onto the given figure/axes (creating new ones if not passed),
+    applying the same styling either way. Returns (fig, ax)."""
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+
+    if chart_data["is_date"]:
+        ax.plot(chart_data["labels"], chart_data["values"], marker="o")
+        ax.set_title(f"{chart_data['metric_label']} over {chart_data['axis_label']}")
     else:
-        plt.bar(labels, values)
-        plt.xticks(rotation=45, ha="right")
-        plt.title(f"{metric_label} by {axis_label}")
-    plt.ylabel(metric_label)
-    if is_money:
+        ax.bar(chart_data["labels"], chart_data["values"])
+        ax.set_title(f"{chart_data['metric_label']} by {chart_data['axis_label']}")
+
+    ax.set_ylabel(chart_data["metric_label"])
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+    if chart_data["is_money"]:
         ax.yaxis.set_major_formatter(lambda x, pos: f"${x:,.0f}")
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=100)
-    plt.close()
+    fig.tight_layout()
+    return fig, ax
+
+
+def choose_and_build_chart(columns: list, rows: list, output_path: str = "chart.png"):
+    """
+    CLI-oriented version: saves the chart to a PNG file and returns the
+    path, or None if this data shape doesn't suit a chart. Used by the
+    command-line tools (run this file directly, or from other scripts
+    that need a file on disk).
+    """
+    chart_data = _select_chart_data(columns, rows)
+    if chart_data is None:
+        return None
+
+    fig, ax = _draw_chart(chart_data)
+    fig.savefig(output_path, dpi=100)
+    plt.close(fig)
     return output_path
+
+
+def build_chart_figure(columns: list, rows: list):
+    """
+    Streamlit-oriented version: returns a matplotlib Figure object directly
+    for inline display via st.pyplot(fig), with no file written to disk.
+    Returns None if this data shape doesn't suit a chart.
+    """
+    chart_data = _select_chart_data(columns, rows)
+    if chart_data is None:
+        return None
+    fig, ax = _draw_chart(chart_data)
+    return fig
 
 
 def display_result(question: str, result: dict, chart_path: str = "chart.png"):
