@@ -19,6 +19,11 @@ from output_formatter import build_summary, build_table, build_chart_figure, _is
 
 st.set_page_config(page_title="Natural Language SQL Analyst", page_icon="📊", layout="wide")
 
+MAX_QUESTIONS_PER_SESSION = 15
+
+if "question_count" not in st.session_state:
+    st.session_state.question_count = 0
+
 # ---------------- Sidebar: dataset credibility ----------------
 with st.sidebar:
     st.header("Olist E-Commerce")
@@ -36,6 +41,10 @@ with st.sidebar:
         "Destructive or out-of-scope requests are declined, not attempted.\n\n"
         "Validated against 25 accuracy checks and 19 adversarial edge cases."
     )
+    st.divider()
+    remaining = MAX_QUESTIONS_PER_SESSION - st.session_state.question_count
+    st.caption(f"This is a shared public demo running on a free-tier API quota. "
+               f"{max(remaining, 0)} question{'s' if remaining != 1 else ''} left this session.")
 
 # ---------------- Main ----------------
 st.title("📊 Natural Language SQL Analyst")
@@ -68,7 +77,14 @@ question = st.text_input(
 
 ask_clicked = st.button("Ask", type="primary")
 
-if ask_clicked and question.strip():
+if ask_clicked and st.session_state.question_count >= MAX_QUESTIONS_PER_SESSION:
+    st.error(
+        f"You've reached the {MAX_QUESTIONS_PER_SESSION}-question limit for this demo session. "
+        f"This protects the shared free-tier API quota for other visitors. "
+        f"Refresh the page to reset, or clone the repo to run it with your own API key."
+    )
+elif ask_clicked and question.strip():
+    st.session_state.question_count += 1
     with st.spinner("Generating and running your query..."):
         result = ask_question(question)
 
