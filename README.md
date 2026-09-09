@@ -4,7 +4,7 @@ Ask a real e-commerce database a question in plain English and get back a correc
 validated answer — a table, a chart, and a plain-language summary of what ran —
 without ever risking the underlying data.
 
-**Live demo:** *(add your deployed URL here once hosted)*
+**Live demo:** *https://natural-language-sql-analyst.streamlit.app*
 
 ![Top 5 categories by revenue, with table, chart, and SQL transparency](screenshots/top5_categories.png)
 
