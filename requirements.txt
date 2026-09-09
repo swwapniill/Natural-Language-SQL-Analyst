@@ -1,0 +1,13 @@
+# Core dependencies for the active pipeline (app.py and everything it imports).
+groq
+sqlglot
+streamlit
+pandas
+matplotlib
+
+# Not required to run the app -- only needed if you revisit the earlier
+# LLM providers this project tried before settling on Groq (see README's
+# "Known limitations" for why they were dropped).
+# anthropic        # llm_query.py
+# google-genai     # llm_query_gemini.py
+# faker            # generate_data.py (synthetic data generator, unused since real data was loaded)
