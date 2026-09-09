@@ -14,7 +14,10 @@ Get a free key at: https://console.groq.com/keys (email or Google sign-in,
 no card needed).
 """
 import os
+import re
+import time
 from groq import Groq
+from groq import RateLimitError
 from prompt_builder import build_system_prompt
 
 # Confirmed against the live /v1/models endpoint for this account --
@@ -33,6 +36,35 @@ def get_client() -> Groq:
     return Groq(api_key=api_key)
 
 
+def _extract_wait_seconds(error_message: str, default: float = 12.0) -> float:
+    """Groq's rate limit error includes 'Please try again in 10.67s' --
+    parse that exact wait time when present, so we wait exactly as long
+    as needed rather than guessing. Falls back to a safe default if the
+    message format ever changes."""
+    match = re.search(r"try again in ([\d.]+)s", error_message)
+    if match:
+        return float(match.group(1)) + 0.5  # small buffer on top of the exact figure
+    return default
+
+
+def _call_with_rate_limit_retry(client, **kwargs):
+    """
+    Groq's free tier has a tokens-per-minute ceiling (8,000 TPM on
+    gpt-oss-120b) shared across every visitor once this app is public --
+    a burst of a couple of calls close together can exceed it even
+    without approaching the daily request cap. This is a transient,
+    self-resolving condition (the window clears within seconds), so we
+    wait exactly as long as Groq says to and retry once automatically,
+    rather than surfacing a raw 429 to the user.
+    """
+    try:
+        return client.chat.completions.create(**kwargs)
+    except RateLimitError as e:
+        wait_seconds = _extract_wait_seconds(str(e))
+        time.sleep(wait_seconds)
+        return client.chat.completions.create(**kwargs)  # if this also fails, let it raise
+
+
 def ask_llm_for_sql(question: str) -> str:
     """
     Sends the question to Groq with the schema/rules system prompt.
@@ -41,7 +73,8 @@ def ask_llm_for_sql(question: str) -> str:
     client = get_client()
     system_prompt = build_system_prompt()
 
-    completion = client.chat.completions.create(
+    completion = _call_with_rate_limit_retry(
+        client,
         model=MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -74,7 +107,8 @@ def ask_llm_to_fix_sql(question: str, failed_sql: str, error_message: str) -> st
         f"respond with NO_QUERY: <reason> instead."
     )
 
-    completion = client.chat.completions.create(
+    completion = _call_with_rate_limit_retry(
+        client,
         model=MODEL,
         messages=[
             {"role": "system", "content": system_prompt},

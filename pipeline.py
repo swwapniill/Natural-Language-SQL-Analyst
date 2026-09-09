@@ -51,8 +51,31 @@ def ask_question(question: str) -> dict:
       'success'  -> {'status', 'sql', 'assumption', 'columns', 'rows', 'retried'}
       'refused'  -> {'status', 'message'}   (destructive request blocked)
       'no_query' -> {'status', 'message'}   (out of scope / can't be answered)
-      'error'    -> {'status', 'message', 'retried'}  (failed even after retry)
+      'error'    -> {'status', 'message', 'retried'}  (failed even after retry,
+                     or an unhandled API/network error -- see the outer
+                     try/except below. This app is public, so a transient
+                     failure must never crash the whole page.)
     """
+    try:
+        return _ask_question_inner(question)
+    except Exception as e:
+        # Last-resort safety net. llm_query_groq.py already retries once
+        # automatically on a rate-limit error; if that retry ALSO fails,
+        # or any other unexpected exception happens (network blip, API
+        # outage, etc.), this is what stands between that and a raw
+        # traceback shown to a public visitor.
+        return {
+            "status": "error",
+            "message": (
+                "The request couldn't be completed right now (this is usually "
+                "a temporary API issue, not a problem with your question). "
+                "Please try again in a moment."
+            ),
+            "retried": False,
+        }
+
+
+def _ask_question_inner(question: str) -> dict:
     schema = load_schema(DB_PATH)
     raw_response = ask_llm_for_sql(question)
     retried = False
