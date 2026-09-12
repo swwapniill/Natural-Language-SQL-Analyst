@@ -13,11 +13,15 @@ import streamlit as st
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
+from PIL import Image
 
 from pipeline import ask_question
 from output_formatter import build_summary, build_table, build_chart_figure, _is_money_column, _format_money, _pretty_label
 
-st.set_page_config(page_title="Natural Language SQL Analyst", page_icon="📊", layout="wide")
+APP_ICON = Image.open("icon.png")
+GITHUB_URL = "https://github.com/swwapniill/Natural-Language-SQL-Analyst"
+
+st.set_page_config(page_title="Chatalyst", page_icon=APP_ICON, layout="wide")
 
 MAX_QUESTIONS_PER_SESSION = 15
 
@@ -26,47 +30,61 @@ if "question_count" not in st.session_state:
 
 # ---------------- Sidebar: dataset credibility ----------------
 with st.sidebar:
-    st.header("Olist E-Commerce")
-    st.caption("Real Brazilian marketplace data, 2016–2018 · loaded into SQLite")
-    col_a, col_b = st.columns(2)
-    col_a.metric("Orders", "99,441")
-    col_b.metric("Customers", "96,096")
-    col_a.metric("Sellers", "3,095")
-    col_b.metric("Products", "32,951")
-    st.divider()
-    st.markdown(
-        "**Safety**\n\n"
-        "Every query is parsed and validated before it runs — SELECT-only, "
-        "real tables/columns only, read-only connection, 10s timeout. "
-        "Destructive or out-of-scope requests are declined, not attempted.\n\n"
-        "Validated against 25 accuracy checks and 19 adversarial edge cases."
-    )
-    st.divider()
+    col_icon, col_name = st.columns([1, 4])
+    with col_icon:
+        st.image("icon.png", width=48)
+    with col_name:
+        st.markdown("### Chatalyst")
+    st.caption("Olist E-Commerce · real Brazilian marketplace data, 2016–2018 · loaded into SQLite")
+
+    with st.container(border=True):
+        st.metric("Orders", "99,441")
+        st.metric("Customers", "96,096")
+        st.metric("Sellers", "3,095")
+        st.metric("Products", "32,951")
+
+    with st.container(border=True):
+        st.markdown(
+            "**Safety**\n\n"
+            "Every query is parsed and validated before it runs — SELECT-only, "
+            "real tables/columns only, read-only connection, 10s timeout. "
+            "Destructive or out-of-scope requests are declined, not attempted.\n\n"
+            "Validated against 25 accuracy checks and 19 adversarial edge cases."
+        )
+
     remaining = MAX_QUESTIONS_PER_SESSION - st.session_state.question_count
     st.caption(f"This is a shared public demo running on a free-tier API quota. "
                f"{max(remaining, 0)} question{'s' if remaining != 1 else ''} left this session.")
 
+    st.markdown(f"[View source on GitHub ↗]({GITHUB_URL})")
+
 # ---------------- Main ----------------
-st.title("📊 Natural Language SQL Analyst")
+header_col1, header_col2 = st.columns([1, 8])
+with header_col1:
+    st.image("icon.png", width=64)
+with header_col2:
+    st.title("Chatalyst")
 st.caption(
     "Ask a question about the Olist e-commerce dataset in plain English. "
     "A read-only SQL query is generated, validated, and run against the real database."
 )
 
 EXAMPLE_QUESTIONS = [
-    "What are the top 5 product categories by revenue?",
-    "How many unique customers do we have?",
-    "What was revenue by month?",
-    "Which state has the most customers?",
+    ("💰", "What are the top 5 product categories by revenue?"),
+    ("👥", "How many unique customers do we have?"),
+    ("📈", "What was revenue by month?"),
+    ("🗺️", "Which state has the most customers?"),
 ]
 
 if "question_input" not in st.session_state:
     st.session_state.question_input = ""
 
 st.write("**Try an example:**")
-cols = st.columns(len(EXAMPLE_QUESTIONS))
-for col, eq in zip(cols, EXAMPLE_QUESTIONS):
-    if col.button(eq, use_container_width=True):
+row1 = st.columns(2)
+row2 = st.columns(2)
+button_slots = row1 + row2
+for slot, (icon, eq) in zip(button_slots, EXAMPLE_QUESTIONS):
+    if slot.button(f"{icon} {eq}", use_container_width=True):
         st.session_state.question_input = eq
 
 question = st.text_input(
@@ -147,8 +165,12 @@ elif ask_clicked:
     st.warning("Type a question first.")
 
 st.divider()
-st.caption(
-    "Built on the real Olist Brazilian e-commerce dataset. "
-    "Read-only by design -- no query can modify or delete data, enforced at both "
-    "the SQL-parsing level and the database connection level."
-)
+footer_col1, footer_col2 = st.columns([3, 1])
+with footer_col1:
+    st.caption(
+        "Built on the real Olist Brazilian e-commerce dataset. "
+        "Read-only by design -- no query can modify or delete data, enforced at both "
+        "the SQL-parsing level and the database connection level."
+    )
+with footer_col2:
+    st.caption(f"[GitHub repo ↗]({GITHUB_URL})")
