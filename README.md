@@ -5,7 +5,7 @@
 Get back a correct, validated answer — a table, a chart, and a plain-language
 summary of what ran — without ever risking the underlying data.
 
-**Live demo:** [natural-language-sql-analyst.streamlit.app](https://natural-language-sql-analyst.streamlit.app)
+**Live demo:** https://chatalyst.streamlit.app
 
 ![Chatalyst answering a real question with table, chart, and SQL transparency](screenshots/chatalyst_success.png)
 
