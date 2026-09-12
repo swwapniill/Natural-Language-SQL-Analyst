@@ -19,6 +19,28 @@ from output_formatter import build_summary, build_table, build_chart_figure, _is
 
 st.set_page_config(page_title="Natural Language SQL Analyst", page_icon="📊", layout="wide")
 
+# --- TEMPORARY DIAGNOSTIC PANEL -- remove once the live-vs-local mismatch is found ---
+with st.expander("🔧 Debug info (temporary)"):
+    try:
+        from prompt_builder import build_system_prompt
+        from schema_loader import load_schema
+        import llm_query_groq
+        import os
+
+        prompt = build_system_prompt()
+        st.write(f"System prompt length: {len(prompt)} characters")
+        st.code(prompt[:500] + "\n...[truncated]...", language="text")
+
+        schema = load_schema("olist_real.db")
+        st.write(f"Tables found by schema_loader: {list(schema.keys())}")
+
+        st.write(f"Model being used: {llm_query_groq.MODEL}")
+        st.write(f"GROQ_API_KEY is set: {bool(os.environ.get('GROQ_API_KEY'))}")
+        st.write(f"Current working directory: {os.getcwd()}")
+        st.write(f"olist_real.db exists at expected path: {os.path.exists('olist_real.db')}")
+    except Exception as e:
+        st.error(f"Debug panel itself crashed: {type(e).__name__}: {e}")
+
 MAX_QUESTIONS_PER_SESSION = 15
 
 if "question_count" not in st.session_state:
