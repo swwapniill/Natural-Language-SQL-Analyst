@@ -34,6 +34,18 @@ with st.expander("🔧 Debug info (temporary)"):
         schema = load_schema("olist_real.db")
         st.write(f"Tables found by schema_loader: {list(schema.keys())}")
 
+        db_size_bytes = os.path.getsize("olist_real.db") if os.path.exists("olist_real.db") else 0
+        st.write(f"olist_real.db file size: {db_size_bytes:,} bytes ({db_size_bytes / 1024 / 1024:.1f} MB) -- should be ~95 MB")
+
+        import sqlite3
+        try:
+            conn = sqlite3.connect("olist_real.db")
+            raw_tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            st.write(f"Raw sqlite3 query sees tables: {raw_tables}")
+            conn.close()
+        except Exception as db_e:
+            st.write(f"Raw sqlite3 connection failed: {db_e}")
+
         st.write(f"Model being used: {llm_query_groq.MODEL}")
         st.write(f"GROQ_API_KEY is set: {bool(os.environ.get('GROQ_API_KEY'))}")
         st.write(f"Current working directory: {os.getcwd()}")
