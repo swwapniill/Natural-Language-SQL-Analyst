@@ -1,12 +1,13 @@
-# Natural Language SQL Analyst
+# Chatalyst
 
-Ask a real e-commerce database a question in plain English and get back a correct,
-validated answer — a table, a chart, and a plain-language summary of what ran —
-without ever risking the underlying data.
+*Chat + Analyst — ask a real e-commerce database a question in plain English.*
 
-**Live demo:** *https://natural-language-sql-analyst.streamlit.app*
+Get back a correct, validated answer — a table, a chart, and a plain-language
+summary of what ran — without ever risking the underlying data.
 
-![Top 5 categories by revenue, with table, chart, and SQL transparency](screenshots/top5_categories.png)
+**Live demo:** [natural-language-sql-analyst.streamlit.app](https://natural-language-sql-analyst.streamlit.app)
+
+![Chatalyst answering a real question with table, chart, and SQL transparency](screenshots/chatalyst_success.png)
 
 ## Why this exists
 
@@ -69,13 +70,9 @@ buggy grading is worse than no benchmark.
 | "What's the weather in Mumbai?" | Refused — explains the schema has no weather data, doesn't hallucinate an answer |
 | "Predict next month's revenue" | Refused — explains SQL can't forecast, only query historical data |
 
-Simple aggregate questions get a large, readable number instead of a cramped table:
-
-![Unique customer count, correctly using customer_unique_id](screenshots/unique_customers_metric.png)
-
 ### A real refusal, not a scripted one
 
-![Refusing a destructive request](screenshots/refusal_demo.png)
+![Refusing a destructive request](screenshots/chatalyst_refusal.png)
 
 ## The dataset
 
@@ -114,18 +111,45 @@ Being direct about what this is and isn't:
   wording was defensible. Reworded rather than treated as a model failure.
 - **Single-user, no auth.** Not built for concurrent users or access control — out
   of scope for what this was set out to prove.
+- **The public demo runs on a free-tier model under real, shared conditions —
+  which surfaced failure modes the local test suites never did.** Two distinct
+  issues showed up only after deployment, not in 44 total local test cases:
+  1. Groq's free tier caps `gpt-oss-120b` at 8,000 tokens/minute; a burst of
+     calls (retries resend most of the system prompt) can exceed it. Now
+     handled with an automatic wait-and-retry using the exact time Groq's
+     API reports, plus a general safety net so any unhandled API failure
+     shows a clean message instead of crashing the app.
+  2. A deployment-only bug where the ~95MB database file was silently excluded
+     by an overly broad `.gitignore` rule from early in development — the app
+     ran, but against a freshly auto-created *empty* SQLite file (SQLite
+     creates a file on connect if one doesn't exist, rather than erroring),
+     which made the validator correctly reject every real table as "unknown."
+     Diagnosed with a temporary in-app debug panel that printed the live
+     schema, file size, and raw table list; not something a stack trace alone
+     revealed. This is exactly the class of bug the Day 1 principle "verify
+     with artifacts, not assumptions" was written to catch, and it still slipped
+     through because the assumption (the file is obviously in git) was never
+     re-checked once deployment entered the picture.
+  Beyond those two fixed issues, the shared free-tier model has occasionally
+  produced an incorrect refusal under live conditions that didn't reproduce
+  locally or in either test suite — a known, honest characteristic of running
+  on a smaller open-weight model rather than a frontier one. Retrying usually
+  resolves it.
 
 ## Setup
 
 ```bash
 git clone <this-repo>
-cd olist_llm_sql
+cd chatalyst
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt   # or see individual imports if not present
+pip install -r requirements.txt
 export GROQ_API_KEY=your_key_here  # free, no card, at console.groq.com
 streamlit run app.py
 ```
+
+Note: the public demo caps each browser session at 15 questions to protect the
+shared free-tier API quota. Running it locally with your own key removes that limit.
 
 Rebuilding the database from the raw Kaggle CSVs (optional — `olist_real.db` is
 already included):
@@ -151,10 +175,11 @@ python3 run_edge_cases.py              # 19 safety/behavior questions against th
 ## Project structure
 
 ```
-app.py                   Streamlit interface
+app.py                   Streamlit interface (Chatalyst)
+icon.png                  App icon/favicon
 pipeline.py               Orchestrates: LLM -> validate -> execute -> retry
 prompt_builder.py          Schema context + rules + examples sent to the LLM
-llm_query_groq.py          Active LLM client (Groq)
+llm_query_groq.py          Active LLM client (Groq), incl. rate-limit auto-retry
 validator.py               AST-based SQL safety layer
 executor.py                Read-only, timeout-enforced query execution
 output_formatter.py        Table/chart/summary generation
@@ -162,5 +187,6 @@ schema_loader.py            Reads live schema from the DB for validation
 benchmark.py / run_benchmark.py             25-question accuracy suite
 edge_cases.py / run_edge_cases.py           19-case safety/behavior suite
 verify_benchmark_checkers.py                Validates the benchmark's own grading logic
+build_diagram.py             Regenerates the architecture diagram (Graphviz)
 SCHEMA.md                   Full schema docs + data quirks found during development
 ```
